@@ -1,6 +1,9 @@
 # YOLOv12 ONNX Runtime Web
 
-A minimalistic real-time object detection application built with YOLOv12 and ONNX Runtime Web for browser-based AI inference.
+![vid1 (1)](https://github.com/user-attachments/assets/479e9631-2937-4818-b636-d8cb834a380f)
+
+A minimalistic real-time object detection application built with YOLOv12 and ONNX Runtime Web for browser-based AI inference. Inspired by [Hyuto/
+yolov8-onnxruntime-web](https://github.com/Hyuto/yolov8-onnxruntime-web).
 
 ## 🚀 Quick Start
 
