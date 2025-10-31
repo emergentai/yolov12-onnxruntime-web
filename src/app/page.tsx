@@ -1,42 +1,96 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { VideoUpload } from '@/components/video-upload';
-import { CameraStream } from '@/components/camera-stream';
+import { FileUpload } from '@/components/file-upload';
 import { DetectionOverlay } from '@/components/detection-overlay';
-import { StatsPanel } from '@/components/stats-panel';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ObjectDetector } from '@/lib/object-detector';
 import { VideoProcessor } from '@/lib/video-processor';
-import { Detection, DetectionStats } from '@/lib/types';
-import { Play, Pause, Square, AlertCircle } from 'lucide-react';
+import { Detection } from '@/lib/types';
+import { checkBrowserCompatibility } from '@/lib/browser-checks';
+import { Play, Square, AlertCircle, Info, Camera, CameraOff } from 'lucide-react';
 
 export default function Home() {
   // State management
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
   const [detections, setDetections] = useState<Detection[]>([]);
-  const [stats, setStats] = useState<DetectionStats>({
-    totalDetections: 0,
-    averageConfidence: 0,
-    lastDetectionTime: 0,
-    classCounts: {}
-  });
   const [error, setError] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [videoDimensions, setVideoDimensions] = useState({ width: 640, height: 480 });
+  const [imageDimensions, setImageDimensions] = useState({ width: 640, height: 480 });
+  const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
+  const [browserCheckError, setBrowserCheckError] = useState<string | null>(null);
+  const [inputType, setInputType] = useState<'upload' | 'camera'>('upload');
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const detectorRef = useRef<ObjectDetector | null>(null);
   const processorRef = useRef<VideoProcessor | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Check browser compatibility on mount
+  useEffect(() => {
+    const compatibility = checkBrowserCompatibility();
+    if (!compatibility.allPassed) {
+      // Use setTimeout to avoid synchronous setState in effect
+      setTimeout(() => {
+        setBrowserCheckError(compatibility.errors.join(' '));
+      }, 0);
+    }
+  }, []);
+
+  // Clear detections and file selections when changing tabs
+  useEffect(() => {
+    setDetections([]);
+    
+    // Clear video file selection
+    if (selectedFile) {
+      // Clean up object URL if it exists
+      if (videoRef.current && videoRef.current.src && videoRef.current.src.startsWith('blob:')) {
+        URL.revokeObjectURL(videoRef.current.src);
+      }
+      setSelectedFile(null);
+      if (videoRef.current) {
+        videoRef.current.src = '';
+        videoRef.current.srcObject = null;
+      }
+      if (processorRef.current) {
+        processorRef.current.reset();
+      }
+    }
+    
+    // Clear image file selection
+    if (selectedImage) {
+      if (imageRef.current && imageRef.current.src && imageRef.current.src.startsWith('blob:')) {
+        URL.revokeObjectURL(imageRef.current.src);
+      }
+      setSelectedImage(null);
+      if (imageRef.current) {
+        imageRef.current.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // 1x1 transparent pixel
+      }
+    }
+    
+    // Also stop processing if it's running
+    if (isProcessing) {
+      setIsProcessing(false);
+      if (processorRef.current) {
+        processorRef.current.stopProcessing();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputType]);
+
   // Initialize detector
   useEffect(() => {
+    if (browserCheckError) return;
+
     const initDetector = async () => {
       try {
         console.log('Initializing AI detector...');
@@ -58,7 +112,7 @@ export default function Home() {
         detectorRef.current.dispose();
       }
     };
-  }, []);
+  }, [browserCheckError]);
 
   // Handle video element becoming available when camera is active
   useEffect(() => {
@@ -72,29 +126,88 @@ export default function Home() {
     }
   }, [isCameraActive]);
 
+  // Handle video file selection - set video src when selectedFile changes
+  useEffect(() => {
+    if (selectedFile && videoRef.current && !isCameraActive) {
+      // Clear any existing stream
+      videoRef.current.srcObject = null;
+      
+      // Create object URL and set as source
+      const url = URL.createObjectURL(selectedFile);
+      videoRef.current.src = url;
+      
+      // Load the video
+      videoRef.current.load();
+      
+      // Cleanup function to revoke object URL when component unmounts or file changes
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    }
+  }, [selectedFile, isCameraActive]);
+
+  // Handle image file selection - set image src when selectedImage changes
+  useEffect(() => {
+    if (selectedImage && imageRef.current) {
+      // Create object URL and set as source
+      const url = URL.createObjectURL(selectedImage);
+      imageRef.current.src = url;
+      
+      // Set dimensions when image loads
+      imageRef.current.onload = () => {
+        if (imageRef.current) {
+          const { naturalWidth, naturalHeight } = imageRef.current;
+          setImageDimensions({ width: naturalWidth, height: naturalHeight });
+        }
+      };
+      
+      // Cleanup function to revoke object URL when component unmounts or file changes
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    }
+  }, [selectedImage]);
+
   // Handle video file selection
   const handleVideoSelect = useCallback((file: File) => {
     setSelectedFile(file);
+    setSelectedImage(null);
     setError(null);
-    
-    if (videoRef.current) {
-      const url = URL.createObjectURL(file);
-      videoRef.current.src = url;
+    setIsCameraActive(false);
+  }, []);
+
+  // Handle image file selection
+  const handleImageSelect = useCallback((file: File) => {
+    setSelectedImage(file);
+    setSelectedFile(null);
+    setError(null);
+    setIsCameraActive(false);
+  }, []);
+
+  // Handle image clear
+  const handleClearImage = useCallback(() => {
+    if (imageRef.current && imageRef.current.src && imageRef.current.src.startsWith('blob:')) {
+      URL.revokeObjectURL(imageRef.current.src);
+    }
+    setSelectedImage(null);
+    setDetections([]);
+    if (imageRef.current) {
+      imageRef.current.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // 1x1 transparent pixel
     }
   }, []);
 
   const handleClearVideo = useCallback(() => {
+    // Clean up object URL if it exists
+    if (videoRef.current && videoRef.current.src && videoRef.current.src.startsWith('blob:')) {
+      URL.revokeObjectURL(videoRef.current.src);
+    }
+    
     setSelectedFile(null);
     setDetections([]);
-    setStats({
-      totalDetections: 0,
-      averageConfidence: 0,
-      lastDetectionTime: 0,
-      classCounts: {}
-    });
     
     if (videoRef.current) {
       videoRef.current.src = '';
+      videoRef.current.srcObject = null;
     }
     
     if (processorRef.current) {
@@ -141,6 +254,14 @@ export default function Home() {
   }, []);
 
   const handleCameraStop = useCallback(() => {
+    // Stop detection if it's running
+    if (isProcessing) {
+      setIsProcessing(false);
+      if (processorRef.current) {
+        processorRef.current.stopProcessing();
+      }
+    }
+    
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -151,7 +272,7 @@ export default function Home() {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  }, []);
+  }, [isProcessing]);
 
   // Start/stop processing
   const startProcessing = useCallback(async () => {
@@ -159,17 +280,14 @@ export default function Home() {
 
     try {
       setIsProcessing(true);
-      setIsPaused(false);
       setError(null);
 
       const processor = new VideoProcessor(
         (newDetections) => {
           console.log(`Displaying ${newDetections.length} detections for current frame`);
-          setDetections(newDetections); // Replace instead of accumulate
+          setDetections(newDetections);
         },
-        (newStats) => {
-          setStats(newStats);
-        }
+        () => {} // Stats callback not needed anymore
       );
 
       processor.setVideo(videoRef.current);
@@ -206,152 +324,339 @@ export default function Home() {
 
   const stopProcessing = useCallback(() => {
     setIsProcessing(false);
-    setIsPaused(false);
     
     if (processorRef.current) {
       processorRef.current.stopProcessing();
     }
   }, []);
 
-  const togglePause = useCallback(() => {
-    setIsPaused(!isPaused);
-  }, [isPaused]);
+  // Detect objects in image
+  const detectImage = useCallback(async () => {
+    if (!detectorRef.current || !imageRef.current) return;
 
-  // Export data
-  const handleExport = useCallback(() => {
-    if (!processorRef.current) return;
+    try {
+      setIsProcessing(true);
+      setError(null);
 
-    const allDetections = processorRef.current.exportDetections();
-    const data = {
-      detections: allDetections,
-      stats: processorRef.current.exportStats(),
-      timestamp: new Date().toISOString()
-    };
+      // Create canvas to get image data
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `object-detections-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, []);
+      canvas.width = imageRef.current.naturalWidth;
+      canvas.height = imageRef.current.naturalHeight;
+      ctx.drawImage(imageRef.current, 0, 0);
 
-  const handleReset = useCallback(() => {
-    setDetections([]);
-    setStats({
-      totalDetections: 0,
-      averageConfidence: 0,
-      lastDetectionTime: 0,
-      classCounts: {}
-    });
-    
-    if (processorRef.current) {
-      processorRef.current.reset();
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const newDetections = await detectorRef.current.detectObjects(imageData);
+      setDetections(newDetections);
+    } catch (err) {
+      setError('Failed to detect objects in image');
+      console.error('Image detection error:', err);
+    } finally {
+      setIsProcessing(false);
     }
   }, []);
 
   return (
-    <div className="min-h-screen">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="w-full max-w-6xl">
         {/* Header */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full mb-6 shadow-lg">
-            <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
-              <div className="w-4 h-4 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full"></div>
-            </div>
+        <div className="relative text-center mb-8">
+          {/* Info Button and Theme Toggle */}
+          <div className="absolute top-0 right-0 flex gap-2 sm:right-4">
+            <ThemeToggle />
+            <Dialog open={isInfoDialogOpen} onOpenChange={setIsInfoDialogOpen}>
+              <DialogTrigger asChild>
+                  <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="View model information"
+                >
+                  <Info className="h-5 w-5 text-foreground" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl font-bold text-foreground mb-2">
+                    Model & Technology Information
+                  </DialogTitle>
+                  <DialogDescription className="text-base text-muted-foreground">
+                    Core information about the AI model and tech stack
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6 py-4">
+                  {/* Model Information */}
+                  <div className="space-y-3">
+                    <h3 className="text-lg font-bold text-foreground border-b border-border pb-2">
+                      AI Model
+                    </h3>
+                    <div className="space-y-2 pl-4">
+                      <div className="flex items-start">
+                        <span className="font-semibold text-foreground min-w-[120px]">Model:</span>
+                        <span className="text-muted-foreground">yolov12n.onnx</span>
+                      </div>
+                      <div className="flex items-start">
+                        <span className="font-semibold text-foreground min-w-[120px]">Size:</span>
+                        <span className="text-muted-foreground">11.9 MB</span>
+                      </div>
+                      <div className="flex items-start">
+                        <span className="font-semibold text-foreground min-w-[120px]">Runtime:</span>
+                        <span className="text-muted-foreground">ONNX Runtime through onnxruntime-web package</span>
+                      </div>
+                      <div className="flex items-start">
+                        <span className="font-semibold text-foreground min-w-[120px]">Repository:</span>
+                        <a 
+                          href="https://github.com/sunsmarterjie/yolov12" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-foreground underline"
+                        >
+                          https://github.com/sunsmarterjie/yolov12
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tech Stack */}
+                  <div className="space-y-3">
+                    <h3 className="text-lg font-bold text-foreground border-b border-border pb-2">
+                      Technology Stack
+                    </h3>
+                    <div className="space-y-2 pl-4">
+                      <div className="flex items-start">
+                        <span className="font-semibold text-foreground min-w-[140px]">Framework:</span>
+                        <span className="text-muted-foreground">Next.js 16</span>
+                      </div>
+                      <div className="flex items-start">
+                        <span className="font-semibold text-foreground min-w-[140px]">Runtime:</span>
+                        <span className="text-muted-foreground">Node.js 20</span>
+                      </div>
+                      <div className="flex items-start">
+                        <span className="font-semibold text-foreground min-w-[140px]">UI Library:</span>
+                        <span className="text-muted-foreground">React 19</span>
+                      </div>
+                      <div className="flex items-start">
+                        <span className="font-semibold text-foreground min-w-[140px]">Language:</span>
+                        <span className="text-muted-foreground">TypeScript 5</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
-          <h1 className="text-5xl font-bold text-black mb-4">
-            AI Object Detection
+
+          <h1 className="text-4xl font-bold text-foreground mb-4">
+            YOLOv12 Object Detection
           </h1>
-          <p className="text-xl text-gray-950 max-w-2xl mx-auto leading-relaxed font-semibold">
-            Real-time object detection powered by YOLOv8 and ONNX Runtime Web
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Real-time object detection powered by YOLOv12 and ONNX Runtime Web
           </p>
         </div>
 
-        {/* Error Display */}
-        {error && (
-          <Card className="mb-8 border-0 shadow-lg bg-gradient-to-r from-red-50 to-red-100">
+        {/* Tabs at the Top */}
+        <div className="flex justify-center">
+          <Tabs value={inputType} onValueChange={(v) => setInputType(v as 'upload' | 'camera')} className="w-auto">
+            <TabsList className="inline-flex w-auto p-1 rounded-lg">
+              <TabsTrigger 
+                value="upload" 
+                className="font-bold text-foreground"
+              >
+                Video/Image Upload
+              </TabsTrigger>
+              <TabsTrigger 
+                value="camera"
+                className="font-bold text-foreground"
+              >
+                Live Camera
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {/* Browser Check Error Display */}
+        {browserCheckError && (
+          <Card className="mb-8">
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-gradient-to-r from-red-500 to-red-600 rounded-full flex items-center justify-center shadow-md">
-                  <AlertCircle className="h-6 w-6 text-white" />
-                </div>
+                <AlertCircle className="h-6 w-6 text-foreground" />
                 <div>
-                  <h3 className="font-semibold text-red-800 text-lg">Error</h3>
-                  <p className="text-red-700 font-medium">{error}</p>
+                  <h3 className="font-semibold text-foreground text-lg">Browser Compatibility Issue</h3>
+                  <p className="text-muted-foreground">{browserCheckError}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Video Input and Preview */}
-          <div className="lg:col-span-2">
-            {/* Combined Video Input and Preview Box */}
-            <Card className="shadow-lg border-0">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-xl font-bold text-black flex items-center">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
-                  Video Input & Detection
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Tabs defaultValue="upload" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 p-1 rounded-lg">
-                    <TabsTrigger 
-                      value="upload" 
-                      className="data-[state=active]:shadow-sm font-bold text-black"
-                    >
-                      Video Upload
-                    </TabsTrigger>
-                    <TabsTrigger 
-                      value="camera"
-                      className="data-[state=active]:shadow-sm font-bold text-black"
-                    >
-                      Live Camera
-                    </TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="upload" className="mt-6">
-                    <VideoUpload
-                      onVideoSelect={handleVideoSelect}
-                      onClear={handleClearVideo}
-                      selectedFile={selectedFile}
-                    />
-                  </TabsContent>
-                  
-                  <TabsContent value="camera" className="mt-6">
-                    <CameraStream
-                      onStreamStart={handleCameraStart}
-                      onStreamStop={handleCameraStop}
-                      isActive={isCameraActive}
-                    />
-                  </TabsContent>
-                </Tabs>
+        {/* Error Display */}
+        {error && (
+          <Card className="mb-8">
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-4">
+                <AlertCircle className="h-6 w-6 text-foreground" />
+                <div>
+                  <h3 className="font-semibold text-foreground text-lg">Error</h3>
+                  <p className="text-muted-foreground">{error}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-                {/* Video Preview Section - Only show when there's a video source */}
-                {(selectedFile || isCameraActive) && (
+        {/* Main Content Area */}
+        <Card>
+          <CardContent className="p-6">
+            <div className="w-full">
+              {/* Upload Section - Unified Video and Image */}
+              {inputType === 'upload' && !selectedFile && !selectedImage && (
+                <FileUpload
+                  onVideoSelect={handleVideoSelect}
+                  onImageSelect={handleImageSelect}
+                  onClear={() => {
+                    if (selectedFile) {
+                      handleClearVideo();
+                    }
+                    if (selectedImage) {
+                      handleClearImage();
+                    }
+                  }}
+                  selectedVideo={selectedFile}
+                  selectedImage={selectedImage}
+                />
+              )}
+
+              {inputType === 'camera' && (
+                <div className="space-y-6">
+                  {/* Video Preview - Always visible */}
+                  <div className="relative bg-card rounded overflow-hidden min-h-[400px] max-h-[600px] flex items-center justify-center">
+                    {!isCameraActive ? (
+                      <div className="text-center">
+                        <Camera className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg">Camera Not Started</p>
+                        <p className="text-sm mt-2">Click &quot;Start Camera&quot; below to begin</p>
+                      </div>
+                    ) : (
+                      <>
+                        <video
+                          ref={videoRef}
+                          className="w-full h-auto max-h-[600px] object-contain"
+                          muted
+                          playsInline
+                          autoPlay
+                          preload="none"
+                          onLoadedMetadata={() => {
+                            if (videoRef.current) {
+                              const { videoWidth, videoHeight } = videoRef.current;
+                              setVideoDimensions({ width: videoWidth, height: videoHeight });
+                            }
+                          }}
+                        />
+                        <DetectionOverlay
+                          detections={detections}
+                          videoWidth={videoDimensions.width}
+                          videoHeight={videoDimensions.height}
+                          className="absolute inset-0"
+                        />
+                      </>
+                    )}
+                  </div>
+
+                  {/* Camera and Detection Controls */}
+                  <div className="flex justify-center space-x-3">
+                    {/* Camera Control */}
+                    {!isCameraActive ? (
+                      <Button
+                        onClick={async () => {
+                          try {
+                            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                              setError('Camera access not supported in this browser');
+                              return;
+                            }
+                            
+                            let stream;
+                            try {
+                              stream = await navigator.mediaDevices.getUserMedia({
+                                video: {
+                                  width: { ideal: 1280 },
+                                  height: { ideal: 720 },
+                                  frameRate: { ideal: 30 }
+                                },
+                                audio: false
+                              });
+                            } catch {
+                              stream = await navigator.mediaDevices.getUserMedia({
+                                video: true,
+                                audio: false
+                              });
+                            }
+                            
+                            handleCameraStart(stream);
+                          } catch (err) {
+                            const errorMessage = err instanceof Error ? err.message : 'Failed to access camera';
+                            setError(errorMessage);
+                          }
+                        }}
+                        variant="outline"
+                        className="px-6 py-2"
+                      >
+                        <Camera className="h-4 w-4 mr-2" />
+                        Start Camera
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleCameraStop}
+                        variant="outline"
+                        className="px-6 py-2"
+                      >
+                        <CameraOff className="h-4 w-4 mr-2" />
+                        Stop Camera
+                      </Button>
+                    )}
+
+                    {/* Detection Control */}
+                    {!isProcessing ? (
+                      <Button
+                        onClick={startProcessing}
+                        disabled={!isCameraActive}
+                        variant="outline"
+                        className="px-6 py-2"
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        Start Detection
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={stopProcessing}
+                        variant="outline"
+                        className="px-6 py-2"
+                      >
+                        <Square className="h-4 w-4 mr-2" />
+                        Stop Detection
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+                {/* Video Preview Section - Only show for uploaded videos, not camera */}
+                {selectedFile && !isCameraActive && (
                   <div className="mt-8">
-                    <div className="flex items-center mb-4">
-                      <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
-                      <h3 className="text-lg font-bold text-black">Video Preview & Detection</h3>
-                    </div>
-                    
-                    <div className="relative bg-black rounded-xl overflow-hidden shadow-inner">
+                    <div className="relative bg-background rounded overflow-hidden">
                       <video
                         ref={videoRef}
-                        className="w-full h-auto min-h-[300px] object-contain"
+                        className="w-full h-auto min-h-[300px] max-h-[600px] object-contain"
                         controls={!isCameraActive}
                         muted
                         playsInline
                         autoPlay={isCameraActive}
-                        preload="none"
+                        preload={isCameraActive ? "none" : "metadata"}
                         onLoadedMetadata={() => {
                           if (videoRef.current) {
                             const { videoWidth, videoHeight } = videoRef.current;
                             console.log(`Video dimensions: ${videoWidth}x${videoHeight}`);
+                            setVideoDimensions({ width: videoWidth, height: videoHeight });
                           }
                         }}
                         onCanPlay={() => {
@@ -370,86 +675,135 @@ export default function Home() {
                             });
                           }
                         }}
+                        onEnded={() => {
+                          // Stop detection when uploaded video ends (not for camera streams)
+                          if (!isCameraActive && selectedFile && isProcessing) {
+                            console.log('Video ended, stopping detection');
+                            stopProcessing();
+                          }
+                        }}
                       />
                       <DetectionOverlay
                         detections={detections}
-                        videoWidth={videoRef.current?.videoWidth || 640}
-                        videoHeight={videoRef.current?.videoHeight || 480}
+                        videoWidth={videoDimensions.width}
+                        videoHeight={videoDimensions.height}
                         className="absolute inset-0"
                       />
                     </div>
 
                     {/* Video Controls */}
-                    <div className="flex justify-center space-x-3 mt-6">
+                    <div className="relative flex justify-center items-center mt-6">
+                      {!isProcessing ? (
+                        <Button
+                          onClick={startProcessing}
+                          disabled={!selectedFile}
+                          variant="outline"
+                          className="px-6 py-2"
+                        >
+                          <Play className="h-4 w-4 mr-2" />
+                          Start Detection
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={stopProcessing}
+                          variant="outline"
+                          className="px-6 py-2"
+                        >
+                          <Square className="h-4 w-4 mr-2" />
+                          Stop Detection
+                        </Button>
+                      )}
+                      <div className="absolute right-0">
+                        <FileUpload
+                          onVideoSelect={handleVideoSelect}
+                          onImageSelect={handleImageSelect}
+                          onClear={() => {
+                            if (selectedFile) {
+                              handleClearVideo();
+                            }
+                            if (selectedImage) {
+                              handleClearImage();
+                            }
+                          }}
+                          selectedVideo={selectedFile}
+                          selectedImage={selectedImage}
+                          showCompactBanner={true}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              {/* Image Preview Section */}
+              {selectedImage && (
+                <div className="mt-8">
+                  <div className="relative bg-foreground rounded overflow-hidden">
+                    <img
+                      ref={imageRef}
+                      alt="Uploaded image"
+                      className="w-full h-auto min-h-[300px] max-h-[600px] object-contain"
+                      onLoad={() => {
+                        if (imageRef.current) {
+                          const { naturalWidth, naturalHeight } = imageRef.current;
+                          setImageDimensions({ width: naturalWidth, height: naturalHeight });
+                        }
+                      }}
+                    />
+                    <DetectionOverlay
+                      detections={detections}
+                      videoWidth={imageDimensions.width}
+                      videoHeight={imageDimensions.height}
+                      className="absolute inset-0"
+                    />
+                  </div>
+
+                  {/* Image Controls */}
+                  <div className="relative flex justify-center items-center mt-6">
+                    {!isProcessing ? (
                       <Button
-                        onClick={startProcessing}
-                        disabled={!selectedFile && !isCameraActive}
-                        className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg hover:shadow-xl px-6 py-2 rounded-lg font-medium"
+                        onClick={detectImage}
+                        disabled={!selectedImage}
+                        variant="outline"
+                        className="px-6 py-2"
                       >
                         <Play className="h-4 w-4 mr-2" />
                         Start Detection
                       </Button>
-                      
-                      <Button
-                        onClick={togglePause}
-                        disabled={!isProcessing}
-                        variant="outline"
-                        className="border-2 hover:bg-gray-50 px-6 py-2 rounded-lg font-bold text-black"
-                      >
-                        {isPaused ? (
-                          <>
-                            <Play className="h-4 w-4 mr-2" />
-                            Resume
-                          </>
-                        ) : (
-                          <>
-                            <Pause className="h-4 w-4 mr-2" />
-                            Pause
-                          </>
-                        )}
-                      </Button>
-                      
+                    ) : (
                       <Button
                         onClick={stopProcessing}
-                        disabled={!isProcessing}
-                        variant="destructive"
-                        className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 shadow-lg hover:shadow-xl px-6 py-2 rounded-lg font-medium"
+                        variant="outline"
+                        className="px-6 py-2"
                       >
                         <Square className="h-4 w-4 mr-2" />
-                        Stop
+                        Stop Detection
                       </Button>
+                    )}
+                    <div className="absolute right-0">
+                      <FileUpload
+                        onVideoSelect={handleVideoSelect}
+                        onImageSelect={handleImageSelect}
+                        onClear={() => {
+                          if (selectedFile) {
+                            handleClearVideo();
+                          }
+                          if (selectedImage) {
+                            handleClearImage();
+                          }
+                        }}
+                        selectedVideo={selectedFile}
+                        selectedImage={selectedImage}
+                        showCompactBanner={true}
+                      />
                     </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                </div>
+              )}
 
-          {/* Right Column - Statistics */}
-          <div className="space-y-6">
-            <StatsPanel
-              stats={stats}
-              onReset={handleReset}
-              onExport={handleExport}
-              isProcessing={isProcessing}
-            />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-16 pt-8 border-t border-gray-200">
-          <div className="text-center">
-            <div className="flex items-center justify-center space-x-2 mb-4">
-              <div className="w-2 h-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
-              <div className="w-2 h-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"></div>
-              <div className="w-2 h-2 bg-gradient-to-r from-pink-500 to-red-500 rounded-full"></div>
+              {/* Remove the Tabs section from here - it's now at the top of the page */}
             </div>
-            <p className="text-black font-bold">AI Object Detection Application</p>
-            <p className="text-sm text-gray-950 mt-2 font-semibold">
-              Built with Next.js, ONNX Runtime Web, and YOLOv8
-            </p>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

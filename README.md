@@ -1,18 +1,17 @@
-# AI Object Detection
+# YOLOv12 ONNX Runtime Web
 
-A real-time object detection application built with YOLOv8 and ONNX Runtime Web for browser-based AI inference.
+A minimalistic real-time object detection application built with YOLOv12 and ONNX Runtime Web for browser-based AI inference.
 
 ## 🎯 Project Overview
 
-This application demonstrates real-time object detection using computer vision. The system processes video streams (uploaded files or live camera) to identify objects in real-time using the YOLOv8n model.
+This application demonstrates real-time object detection using computer vision. The system processes video streams (uploaded files or live camera) to identify objects in real-time using the YOLOv12 nano model.
 
 ### Key Features
 
 - **Real-time Detection**: Processes video at 10+ FPS with live annotation overlays
 - **Client-side Processing**: All AI inference happens in the browser (privacy-preserving)
 - **Multiple Input Sources**: Supports uploaded video files and live camera streams
-- **Modern UI**: Clean, tabbed interface built with Next.js and Shadcn/ui
-- **Export Capabilities**: Export detection results as JSON
+- **Minimalistic UI**: Clean, simple interface built with Next.js
 - **80 Object Classes**: Detects common objects from the COCO dataset
 
 ## 🚀 Quick Start
@@ -28,13 +27,13 @@ This application demonstrates real-time object detection using computer vision. 
 1. **Clone and install dependencies:**
    ```bash
    git clone <repository-url>
-   cd brampton-ai-poc
+   cd yolov12-onnxruntime-web
    npm install
    ```
 
 2. **Add the AI model:**
-   - Download the YOLOv8n model in ONNX format
-   - Place it in `public/models/yolov8n.onnx`
+   - Download the YOLOv12n model in ONNX format
+   - Place it in `public/models/yolo12n.onnx`
    - Ensure `public/models/model-metadata.json` is configured correctly
 
 3. **Start the development server:**
@@ -47,34 +46,38 @@ This application demonstrates real-time object detection using computer vision. 
 
 ## 🤖 Model Setup
 
-The application uses the YOLOv8n model in ONNX format for object detection.
+The application uses the YOLOv12n model in ONNX format for object detection.
 
 ### Model Requirements
 
 - **Format**: ONNX (.onnx)
-- **Model**: YOLOv8n (nano version for web deployment)
+- **Model**: YOLOv12n (nano version for web deployment)
 - **Input Size**: 640x640 pixels
 - **Classes**: 80 COCO classes (person, car, truck, etc.)
 
 ### Getting the Model
 
-1. **Download from Ultralytics:**
-   ```python
-   from ultralytics import YOLO
-   model = YOLO('yolov8n.pt')
-   model.export(format='onnx', imgsz=640)
-   ```
+1. **Convert to ONNX:**
+   - Use the provided `convert_to_onnx.py` script or convert from PyTorch
+   - Place the model file in `public/models/yolo12n.onnx`
 
-2. **Place the model:**
-   - Rename the exported file to `yolov8n.onnx`
-   - Place in `public/models/yolov8n.onnx`
-
-3. **Verify metadata:**
+2. **Verify metadata:**
    - Ensure `public/models/model-metadata.json` contains correct configuration
    - Input size should be `[640, 640]`
    - Classes should include COCO class names
 
-## 🏗️ Technical Architecture
+## 🏗️ Architecture
+
+```mermaid
+graph LR
+    A[Video Input] -->|Camera/Upload| B[Video Processor]
+    B -->|Extract Frames| C[Object Detector]
+    C -->|ONNX Runtime| D[YOLOv12 Model]
+    D -->|Detections| E[Detection Overlay]
+    B -->|Display| E
+```
+
+### Technical Architecture
 
 ### Frontend Stack
 - **Next.js 15**: React framework with App Router
@@ -85,7 +88,7 @@ The application uses the YOLOv8n model in ONNX format for object detection.
 
 ### AI/ML Stack
 - **ONNX Runtime Web**: Browser-based AI inference
-- **YOLOv8n**: Object detection model architecture
+- **YOLOv12n**: Object detection model architecture
 - **Client-side Processing**: No server required, privacy-preserving
 
 ### Key Components
@@ -106,7 +109,7 @@ src/
 │   └── utils.ts                 # Utility functions
 └── public/
     └── models/
-        ├── yolov8n.onnx         # AI model file
+        ├── yolo12n.onnx         # AI model file
         └── model-metadata.json  # Model configuration
 ```
 
@@ -137,7 +140,7 @@ src/
 ## 📊 Performance Specifications
 
 - **Processing Speed**: 10+ FPS on modern browsers
-- **Model Size**: ~6MB (YOLOv8n nano)
+- **Model Size**: ~6MB (YOLOv12n nano)
 - **Browser Support**: Chrome, Edge, Firefox (WebGL required)
 - **Memory Usage**: ~200-500MB during processing
 - **Accuracy**: 80+ classes from COCO dataset
@@ -147,7 +150,7 @@ src/
 ### Model Parameters
 Edit `public/models/model-metadata.json` to adjust:
 - `confidenceThreshold`: Minimum confidence for detections (0.0-1.0)
-- `nmsThreshold`: Non-maximum suppression threshold (0.0-1.0)
+- ``nmsThreshold``: Non-maximum suppression threshold (0.0-1.0)
 - `inputSize`: Model input dimensions [width, height]
 - `classes`: Array of class names for detected objects
 
@@ -161,9 +164,10 @@ Modify `src/lib/video-processor.ts`:
 ### Common Issues
 
 **"Failed to initialize AI detector"**
-- Ensure `yolov8n.onnx` exists in `public/models/`
+- Ensure `yolo12n.onnx` exists in `public/models/`
 - Check browser console for detailed error messages
 - Verify model is valid ONNX format
+- Verify browser supports WebGL and required APIs (check runs automatically on load)
 
 **"Camera access denied"**
 - Grant camera permissions in browser settings
@@ -177,7 +181,7 @@ Modify `src/lib/video-processor.ts`:
 
 **Browser compatibility issues**
 - Use Chrome or Edge for best performance
-- Enable WebGL in browser settings
+- Application automatically checks for WebGL, MediaStream, and FileReader support on startup
 - Update to latest browser version
 
 ## 📈 Future Enhancements
@@ -225,4 +229,4 @@ For technical support or questions:
 
 ---
 
-**Built with ❤️ using Next.js, ONNX Runtime Web, and YOLOv8**
+**Built with Next.js, ONNX Runtime Web, and YOLOv12**
