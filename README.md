@@ -2,6 +2,9 @@
 
 ![vid1 (1)](https://github.com/user-attachments/assets/479e9631-2937-4818-b636-d8cb834a380f)
 
+![react](https://img.shields.io/badge/React-blue?logo=react)
+![onnxruntime-web](https://img.shields.io/badge/onnxruntime--web-white?logo=onnx&logoColor=black)
+
 A minimalistic real-time object detection application built with YOLOv12 and ONNX Runtime Web for browser-based AI inference. Inspired by [Hyuto/
 yolov8-onnxruntime-web](https://github.com/Hyuto/yolov8-onnxruntime-web).
 
