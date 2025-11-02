@@ -10,7 +10,7 @@ import { ObjectDetector } from '@/lib/object-detector';
 import { VideoProcessor } from '@/lib/video-processor';
 import { Detection } from '@/lib/types';
 import { checkBrowserCompatibility } from '@/lib/browser-checks';
-import { Play, Square, AlertCircle, Info, Camera, CameraOff } from 'lucide-react';
+import { Play, Square, Info, Camera, CameraOff } from 'lucide-react';
 import './globals.css';
 
 function App() {
@@ -19,12 +19,10 @@ function App() {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [detections, setDetections] = useState<Detection[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [videoDimensions, setVideoDimensions] = useState({ width: 640, height: 480 });
   const [imageDimensions, setImageDimensions] = useState({ width: 640, height: 480 });
   const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
-  const [browserCheckError, setBrowserCheckError] = useState<string | null>(null);
   const [inputType, setInputType] = useState<'upload' | 'camera'>('upload');
 
   // Refs
@@ -38,10 +36,7 @@ function App() {
   useEffect(() => {
     const compatibility = checkBrowserCompatibility();
     if (!compatibility.allPassed) {
-      // Use setTimeout to avoid synchronous setState in effect
-      setTimeout(() => {
-        setBrowserCheckError(compatibility.errors.join(' '));
-      }, 0);
+      console.error('Browser compatibility issues:', compatibility.errors.join(' '));
     }
   }, []);
 
@@ -88,19 +83,15 @@ function App() {
 
   // Initialize detector
   useEffect(() => {
-    if (browserCheckError) return;
-
     const initDetector = async () => {
       try {
         console.log('Initializing AI detector...');
         const detector = new ObjectDetector();
         await detector.initialize();
         detectorRef.current = detector;
-        setError(null);
         console.log('AI detector initialized successfully');
       } catch (err) {
-        console.error('Failed to initialize AI detector:', err);
-        setError('Failed to initialize AI detector. Please check that the model file is available.');
+        console.error('Failed to initialize AI detector. Please check that the model file is available:', err);
       }
     };
 
@@ -111,27 +102,7 @@ function App() {
         detectorRef.current.dispose();
       }
     };
-  }, [browserCheckError]);
-
-  // Auto-dismiss error messages after 5 seconds
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => {
-        setError(null);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [error]);
-
-  // Auto-dismiss browser check error messages after 5 seconds
-  useEffect(() => {
-    if (browserCheckError) {
-      const timer = setTimeout(() => {
-        setBrowserCheckError(null);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [browserCheckError]);
+  }, []);
 
   // Handle video element becoming available when camera is active
   useEffect(() => {
@@ -139,8 +110,7 @@ function App() {
       console.log('Video element became available, setting stream');
       videoRef.current.srcObject = streamRef.current;
       videoRef.current.play().catch((err) => {
-        console.error('Error playing video after element became available:', err);
-        setError('Failed to start camera preview: ' + err.message);
+        console.error('Failed to start camera preview:', err);
       });
     }
   }, [isCameraActive]);
@@ -181,7 +151,6 @@ function App() {
           // Automatically run detection when image loads
           try {
             setIsProcessing(true);
-            setError(null);
 
             // Create canvas to get image data
             const canvas = document.createElement('canvas');
@@ -199,8 +168,7 @@ function App() {
             const newDetections = await detectorRef.current.detectObjects(imageData);
             setDetections(newDetections);
           } catch (err) {
-            setError('Failed to detect objects in image');
-            console.error('Image detection error:', err);
+            console.error('Failed to detect objects in image:', err);
           } finally {
             setIsProcessing(false);
           }
@@ -220,7 +188,6 @@ function App() {
   const handleVideoSelect = useCallback((file: File) => {
     setSelectedFile(file);
     setSelectedImage(null);
-    setError(null);
     setIsCameraActive(false);
   }, []);
 
@@ -228,7 +195,6 @@ function App() {
   const handleImageSelect = useCallback((file: File) => {
     setSelectedImage(file);
     setSelectedFile(null);
-    setError(null);
     setIsCameraActive(false);
   }, []);
 
@@ -268,7 +234,6 @@ function App() {
     console.log('handleCameraStart called with stream:', stream);
     streamRef.current = stream;
     setIsCameraActive(true);
-    setError(null);
     
     // Wait for the video element to be rendered after isCameraActive becomes true
     const setStreamToVideo = () => {
@@ -286,8 +251,7 @@ function App() {
           if (videoRef.current && videoRef.current.srcObject) {
             console.log('Attempting to play video');
             videoRef.current.play().catch((err) => {
-              console.error('Error playing video:', err);
-              setError('Failed to start camera preview: ' + err.message);
+              console.error('Failed to start camera preview:', err);
             });
           }
         }, 100);
@@ -328,7 +292,6 @@ function App() {
 
     try {
       setIsProcessing(true);
-      setError(null);
 
       const processor = new VideoProcessor(
         (newDetections) => {
@@ -364,8 +327,7 @@ function App() {
 
       detectLoop();
     } catch (err) {
-      setError('Failed to start processing');
-      console.error('Processing start failed:', err);
+      console.error('Failed to start processing:', err);
       setIsProcessing(false);
     }
   }, []);
@@ -496,36 +458,6 @@ function App() {
           </Tabs>
         </div>
 
-        {/* Browser Check Error Display */}
-        {browserCheckError && (
-          <Card className="mb-8">
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-4">
-                <AlertCircle className="h-6 w-6 text-foreground" />
-                <div>
-                  <h3 className="font-semibold text-foreground text-lg">Browser Compatibility Issue</h3>
-                  <p className="text-muted-foreground">{browserCheckError}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Error Display */}
-        {error && (
-          <Card className="mb-8">
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-4">
-                <AlertCircle className="h-6 w-6 text-foreground" />
-                <div>
-                  <h3 className="font-semibold text-foreground text-lg">Error</h3>
-                  <p className="text-muted-foreground">{error}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Main Content Area */}
         <Card>
           <CardContent className="p-6">
@@ -592,7 +524,7 @@ function App() {
                         onClick={async () => {
                           try {
                             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                              setError('Camera access not supported in this browser');
+                              console.error('Camera access not supported in this browser');
                               return;
                             }
                             
@@ -616,7 +548,7 @@ function App() {
                             handleCameraStart(stream);
                           } catch (err) {
                             const errorMessage = err instanceof Error ? err.message : 'Failed to access camera';
-                            setError(errorMessage);
+                            console.error('Camera access error:', errorMessage, err);
                           }
                         }}
                         variant="outline"
