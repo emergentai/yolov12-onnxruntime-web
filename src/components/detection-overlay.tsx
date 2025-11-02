@@ -66,16 +66,16 @@ export function DetectionOverlay({
     ctx.strokeRect(x, y, width, height);
     
     // Draw class name in large font
-    ctx.font = 'bold 70px Arial';
+    ctx.font = 'bold 35px Arial';
     ctx.textBaseline = 'top';
     const classNameWidth = ctx.measureText(className).width;
     
     // Draw confidence in smaller font
-    ctx.font = '70px Arial';
+    ctx.font = '35px Arial';
     const confidenceWidth = ctx.measureText(confidenceText).width;
     
     const labelWidth = classNameWidth + confidenceWidth + 20;
-    const labelHeight = 85;
+    const labelHeight = 45;
     const labelX = x;
     const labelY = y - labelHeight;
     
@@ -85,12 +85,12 @@ export function DetectionOverlay({
     
     // Draw class name (large)
     ctx.fillStyle = 'white';
-    ctx.font = 'bold 70px Arial';
+    ctx.font = 'bold 35px Arial';
     ctx.textBaseline = 'top';
     ctx.fillText(className, labelX + 10, labelY + 5);
     
     // Draw confidence percentage
-    ctx.font = '70px Arial';
+    ctx.font = '35px Arial';
     ctx.fillText(confidenceText, labelX + classNameWidth + 10, labelY + 5);
     
     // Draw class indicator (small circle)
