@@ -33,7 +33,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          BASE_PATH: /ai-object-detector/
+          BASE_PATH: /yolov12-onnxruntime-web/
           NODE_ENV: production
 
       - name: Setup Pages

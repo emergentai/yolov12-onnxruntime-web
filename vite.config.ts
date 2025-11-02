@@ -12,7 +12,7 @@ export default defineConfig({
   },
   // Use base path from environment variable for GitHub Pages, or default to root
   // GitHub Actions will set BASE_PATH environment variable
-  base: process.env.BASE_PATH || (process.env.NODE_ENV === 'production' ? '/ai-object-detector/' : '/'),
+  base: process.env.BASE_PATH || (process.env.NODE_ENV === 'production' ? '/yolov12-onnxruntime-web/' : '/'),
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
